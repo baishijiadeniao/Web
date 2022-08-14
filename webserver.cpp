@@ -1,13 +1,18 @@
 #include "./webserver.h"
 
 WebServer::WebServer(){
+    //创建MAX_FD个http_conn对象
     this->users=new http_conn[MAX_FD];
+    //设置当前目录的绝对路径
     char server_path[200];
     getcwd(server_path,200);
     char root[6]="/root";           //char*和char[6]的区别：char*在内存常量区不可以被修改
+    //网站资源文件夹的路径
     m_root=(char*)malloc(strlen(server_path)+strlen(root)+1);
     strcpy(m_root,server_path);
     strcat(m_root,root);
+
+    //创建MAX_FD个连接对象
     this->user_timer=new client_data[MAX_FD];
 }
 
@@ -21,15 +26,26 @@ WebServer::~WebServer(){
     delete m_pool;           //不懂为啥这里不用delete[] m_pool
 }
 
-void WebServer::init(int port,string user,string password,string database_name,int log_write,int trigmode,int actor_model,int close_log){
+//初始化
+void WebServer::init(int port,string user,string password,string database_name,int log_write,int opt_linger,int trigmode,int actor_model,int close_log,int sql_num, int thread_num){
+    //端口
     this->m_port=port;
     this->m_user=user;
     this->m_password=password;
     this->m_database_name=database_name;
+    //日志写入方式：同步or异步
     this->m_log_write=log_write;
+    //触发组合方式
     this->m_TRIGMode=trigmode;
+    //并发模型选择
     this->m_actor_model=actor_model;
+    //是否关闭日志
     this->m_close_log=m_close_log;
+    //线程数量
+    this->m_thread_num=thread_num;
+    //数据库连接池数量
+    this->m_sql_num=sql_num;
+    m_OPT_Linger = opt_linger;
 }
 
 void WebServer::trigmode(){
@@ -53,9 +69,12 @@ void WebServer::trigmode(){
 
 void WebServer::log_write(){
     if(0==m_close_log){
+        //异步写入方式
         if(1==m_log_write){
             loger::get_instance()->init("./ServerLog",m_close_log,2000,800000,800);
-        }else{
+        }
+        //同步写入方式
+        else{
             loger::get_instance()->init("./ServerLog",m_close_log,2000,800000,0);
         }
     }
@@ -63,7 +82,7 @@ void WebServer::log_write(){
 
 void WebServer::sql_pool(){
     m_connection_pool=connection_pool::GetInstance();
-    m_connection_pool->init("localhost",m_user,m_password,m_database_name,3306,m_port,m_close_log);
+    m_connection_pool->init("localhost",m_user,m_password,m_database_name,5,m_port,m_close_log);  //改小一点便于测试
     users->initmysql_result(m_connection_pool);
 }
 
@@ -127,7 +146,7 @@ void WebServer::timer(int connfd,struct sockaddr_in client_address){
     //客户端的文件描述符
     user_timer[connfd].sockfd=connfd;
     //创建定时器
-    user_timer* timer=new user_timer;
+    util_timer* timer=new util_timer;
     //绑定客户端信息
     timer->usr_data=&user_timer[connfd];
     //获得此时的时间戳
@@ -137,29 +156,32 @@ void WebServer::timer(int connfd,struct sockaddr_in client_address){
     //设置回调函数
     timer->cb_func=cb_func;
     user_timer[connfd].timer=timer;
-    utils.m_timer_lst->add_timer(timer);
+    utils.m_timer_lst.add_timer(timer);
 }
 
 void WebServer::adjust_timer(util_timer* timer){
     time_t cur=time(NULL);
     timer->expire=cur+3*TIME_SLOT;
-    utils.m_timer_lst->adjust_timer(timer);
+    utils.m_timer_lst.adjust_timer(timer);
     LOG_INFO("%s","Delay the timer's timeout");
 }
 
 void WebServer::deal_timer(util_timer* timer,int sockfd){
     timer->cb_func(&user_timer[sockfd]);
     if(timer){
-        utils.m_timer_lst->del_timer(timer);
+        utils.m_timer_lst.del_timer(timer);
     }
     LOG_INFO("%s","Delete the timer");
 }
 
+//不懂返回true和返回false有什么区别，
 bool WebServer::dealclientdata(){
     struct sockaddr_in client_address;
-    if(m_LISTENTrigmode==1){
-        int connfd=accept(m_listenfd,(struct sockaddr*)&client_address,sizeof(client_address));
-        if(connfd==-1){
+    if(0 == m_LISTENTrigmode){
+        //LT模式，可以不用一次性处理完连接请求
+        socklen_t tmp = sizeof(client_address);
+        int connfd=accept(m_listenfd,(struct sockaddr*)&client_address,&tmp);
+        if(connfd<0){
             LOG_ERROR("%s errno is:%s","accept error",errno);
             return false;
         }
@@ -170,8 +192,11 @@ bool WebServer::dealclientdata(){
         }
         timer(connfd,client_address);
     }else{
+        //ET模式，有多个连接请求要一次性处理完，所以要用while处理到不能处理为止
+        //不懂这里循环一直不退出怎么办
         while(true){
-            int connfd=accept(m_listenfd,(struct sockaddr*)&client_address,sizeof(client_address));
+            //这里不知道对不对
+            int connfd=accept(m_listenfd,(struct sockaddr*)&client_address,(socklen_t*)(sizeof(client_address)));
             if(connfd==-1){
                 LOG_ERROR("%s errno is:%s","accept error",errno);
                 break;
@@ -211,6 +236,7 @@ bool WebServer::dealwithsignal(bool &timeout,bool &stop_server){
 }
 
 void WebServer::dealwithread(int sockfd){
+    LOG_INFO("%s","deal_with_read");
     util_timer* timer=new util_timer;
     timer=user_timer[sockfd].timer;
     if(m_actor_model==1){
@@ -234,13 +260,13 @@ void WebServer::dealwithread(int sockfd){
     }
     else{
         if(users[sockfd].read_once()){
-            LOG_INFO("deal with data from %s",inet_ntoa(users[sockfd].get_address()->sin_addr()))
+            LOG_INFO("deal with data from %s",inet_ntoa(users[sockfd].get_address()->sin_addr))
             m_pool->append_p(users+sockfd);
             if(timer){
                 adjust_timer(timer);
             }
         }else{
-            deal_timer(timer);
+            deal_timer(timer,sockfd);
         }
     }
 }
@@ -269,13 +295,12 @@ void WebServer::dealwithwrite(int sockfd){
     }
     else{
         if(users[sockfd].write()){
-            LOG_INFO("send data to client %s",inet_ntoa(users[sockfd].get_address()->sin_addr()))
-            m_pool->append_p(users+sockfd);
+            LOG_INFO("send data to client %s",inet_ntoa(users[sockfd].get_address()->sin_addr))
             if(timer){
                 adjust_timer(timer);
             }
         }else{
-            deal_timer(timer);
+            deal_timer(timer,sockfd);
         }
     }
 }
@@ -283,24 +308,24 @@ void WebServer::dealwithwrite(int sockfd){
 void WebServer::eventloop(){
     bool timeout=false;
     bool stop_server=false;
-    while (true)
+    while (!stop_server)
     {
         int res=epoll_wait(m_epollfd,events,MAX_EVENT_NUMBER,0);
         if(res<0 && errno != EINTR){
-            LOG_ERROR("%s",epoll_wait failure);
+            LOG_ERROR("%s","epoll_wait failure");
             break;
         }
         for(int i=0;i<res;i++){
             int sockfd=events[i].data.fd;
-            if(fd==m_listenfd){
+            if(sockfd==m_listenfd){
                 bool flag=dealclientdata();
                 if(!flag){
                     continue;
                 }
             }else if(events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)){
-                util_timer *timer=new util_timer;
+                util_timer *timer=user_timer[sockfd].timer;
                 deal_timer(timer,sockfd);
-            }else if(sockfd[i]==m_pipe[0] && (events[i].events & EPOLLIN)){
+            }else if(sockfd==m_pipe[0] && (events[i].events & EPOLLIN)){
                 bool flag=dealwithsignal(timeout,stop_server);
                 if(!flag){
                     LOG_ERROR("%s","dealclientdata error");
@@ -308,7 +333,7 @@ void WebServer::eventloop(){
             }else if(events[i].events & EPOLLIN){
                 dealwithread(sockfd);
             }else if(events[i].events & EPOLLOUT){
-                dealwithread(sockfd);
+                dealwithwrite(sockfd);
             }
         }
         if(timeout){

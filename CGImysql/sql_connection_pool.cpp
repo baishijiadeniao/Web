@@ -1,5 +1,6 @@
 #include "sql_connection_pool.h"
 
+//获取连接池实例，单例模式
 connection_pool* connection_pool::GetInstance(){
     static connection_pool connPool;
     return &connPool;
@@ -17,22 +18,29 @@ void connection_pool::init(string url,string username,string passwd,string DBNam
     m_port=port;
     m_dbname=DBName;
     m_close_log=close_log;
+    // 创建MaxConn条数据库连接
     for(int i=0;i<Max_conn;i++){
+        //初始化连接环境
         MYSQL* connect=NULL;
         connect=mysql_init(connect);
         if(!connect){
             LOG_ERROR("mysql error");
             exit(-1);
         }
+        //连接Mysql服务器
         connect=mysql_real_connect(connect,url.c_str(),username.c_str(),passwd.c_str(),DBName.c_str(),port,NULL,0); //fd==NULL
         if(!connect){
             LOG_ERROR("mysql error");
             exit(-1);
         }
+        //将连接放入数据库连接池
         connList.push_back(connect);
+        //当前空闲的连接+1
         m_free_conn++;
     }
+    //将信号量初始化为最大连接数
     reserce=sem(m_free_conn);
+    //设置最大连接数
     m_max_conn=m_free_conn;
 }
 
@@ -88,12 +96,12 @@ connection_pool::~connection_pool(){
     DestroyPool();
 }
 
-connectRAII::connectRAII(MYSQL **con,connection_pool *connPool){       //不懂为啥这里要整一个**
+connectionRAII::connectionRAII(MYSQL **con,connection_pool *connPool){       //不懂为啥这里要整一个**
     *con=connPool->GetConnection();
     connRAII=*con;
     poolRAII=connPool;
 }
 
-connectRAII::~connectRAII(){
+connectionRAII::~connectionRAII(){
     poolRAII->ReleaseConnection(connRAII);
 }

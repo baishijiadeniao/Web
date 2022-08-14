@@ -4,6 +4,7 @@
 #include "../lock.h"
 #include<list>
 #include "../CGImysql/sql_connection_pool.h"
+#include<stdio.h>
 using namespace std;
 
 template<typename T>
@@ -33,10 +34,10 @@ threadpool<T>::threadpool(int actor_model,connection_pool *connpool,int thread_n
         throw::exception();
     }
     m_threads=new pthread_t[m_thread_num];
-    if(!m_thread){
+    if(!m_threads){
         throw::exception();
     }
-    for(int i=0;i<thread_num){
+    for(int i=0;i<thread_num;i++){
         if(pthread_create(m_threads+i,NULL,worker,this) !=0){
             delete[] m_threads;
             throw::exception();
@@ -71,6 +72,7 @@ bool threadpool<T>::append(T* request,int state){
 template<typename T>
 bool threadpool<T>::append_p(T* request){
     m_queuelocker.lock();
+    LOG_INFO("debug append_p");
     if(m_workqueue.size() ==m_max_request){
         m_queuelocker.unlock();
         return false;
@@ -109,23 +111,24 @@ void threadpool<T>::run(){
         if(1==m_actor_model){
             if(0==request->m_state){
                 if(request->read_once()){
-                    request->improc=1;
-                    connectionRAII mysqlcon(&mysql,connPool);     //不懂
+                    request->improv=1;
+                    connectionRAII mysqlcon(&request->mysql,pool);     //不懂
                     request->process();
                 }else{
-                    request->improc=1;
+                    request->improv=1;
                     request->timer_flag=1;
                 }
             }else{
                 if(request->write()){
-                    request->improc=1;
+                    request->improv=1;
                 }else{
-                    request->improc=1;
+                    request->improv=1;
                     request->timer_flag=1;
                 }
             }
         }else{
-            connectionRAII mysqlcon(&mysql,connPool);
+            LOG_INFO("debug %s","run");
+            connectionRAII mysqlcon(&request->mysql,pool);
             request->process();
         }
     }

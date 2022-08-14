@@ -1,4 +1,5 @@
 #include"lst_time.h"
+#include "../http/http.h"
 
 sort_timer_lst::sort_timer_lst(){
     head=NULL;
@@ -118,8 +119,14 @@ void Utils::init(int time_slot){
     m_TIMESLOT=time_slot;
 }
 
-void Utils::setnonblocking(int fd){
-
+int Utils::setnonblocking(int fd){
+    //获取文件的flags，即open函数的第二个参数
+    int old_option=fcntl(fd,F_GETFL);
+    //增加文件的某个flags，比如文件是阻塞的，想设置成非阻塞
+    int new_option=old_option | O_NONBLOCK;
+    //设置文件的flags
+    fcntl(fd,F_SETFL,new_option);
+    return old_option;
 }
 
 void Utils::addfd(int epollfd,int fd,bool one_shot,int TRIGmode){
@@ -144,7 +151,7 @@ void Utils::sig_handler(int sig){
     errno=save_error;
 }
 
-void Utils::addsig(int sig,void(handler)(int),bool restart=true){
+void Utils::addsig(int sig,void(handler)(int),bool restart){
     struct sigaction sa;
     memset(&sa,'\0',sizeof(sa));
     sa.sa_handler=handler;
@@ -156,7 +163,7 @@ void Utils::addsig(int sig,void(handler)(int),bool restart=true){
 }
 
 void Utils::timer_handler(){
-    m_timer_lst->tick();
+    m_timer_lst.tick();
     alarm(m_TIMESLOT);           //不懂，为什么这里要重新定时
 }
 
@@ -174,7 +181,7 @@ void cb_func(client_data* user_data){
     epoll_ctl(Utils::u_epollfd,EPOLL_CTL_DEL,user_data->sockfd,0);
     assert(user_data);        //不懂
     close(user_data->sockfd);
-    // http_conn::m_user_count--;
+    http_conn::m_user_count--;
 }
 
 // init()->addfd()->addsig(sig_handler())->cb_func()->timer_handler()

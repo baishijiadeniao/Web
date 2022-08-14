@@ -1,6 +1,7 @@
 #ifndef LST_TIME
 #define LST_TIME
 
+#include<fcntl.h>
 #include<stdio.h>
 #include<sys/socket.h>
 #include <arpa/inet.h>
@@ -27,7 +28,7 @@ class util_timer
 {
 public:
     util_timer():prev(NULL),next(NULL){};
-    ~util_timer();
+    ~util_timer(){};
     time_t expire;
     void (*cb_func)(client_data*);   //
     client_data* usr_data;
@@ -53,17 +54,17 @@ private:
 class Utils
 {
 public:
-    sort_timer_lst* m_timer_lst;
+    sort_timer_lst m_timer_lst;
     static int *u_piped;
     static int u_epollfd;
     // 超时时间
     int m_TIMESLOT;
 public:
-    Utils();
-    ~Utils();
+    Utils(){};
+    ~Utils(){};
     void init(int time_slot);
     //将文件描述符设置为非阻塞
-    void setnonblocking(int fd);
+    int setnonblocking(int fd);
     //将内核时间表注册读事件
     void addfd(int epollfd,int fd,bool one_shot,int TRIGmode);
     //信号处理函数

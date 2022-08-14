@@ -34,14 +34,14 @@ public:
     int GetFreeConn();
 };
 
-class connectRAII
+class connectionRAII
 {
 private:
     connection_pool *poolRAII;
     MYSQL* connRAII;
 public:
-    connectRAII(MYSQL **con,connection_pool *connPool);
-    ~connectRAII();
+    connectionRAII(MYSQL **con,connection_pool *connPool);
+    ~connectionRAII();
 };
 
 #endif

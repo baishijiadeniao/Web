@@ -21,8 +21,8 @@ class http_conn
 private:
     /* data */
 public:
-    http_conn();
-    ~http_conn();
+    http_conn(){};
+    ~http_conn(){};
     static const int FILENAME_LEN=200;
     static const int READ_BUFFER_SIZE=2048;   //带有类内初始值设定项的成员必须为常量
     static const int WRITE_BUFFER_SIZE=2048;
@@ -74,17 +74,16 @@ public:
     bool add_content(const char*);
     bool process_write(HTTP_CODE ret);
     bool write();
-    int modfd(int,int,int,int);
     void unmap();
     HTTP_CODE do_request();
     void process();
     void initmysql_result(connection_pool *connPool);
     bool read_once();
-    void close_conn();
+    void close_conn(bool real_close=true);
     sockaddr_in* get_address(){
         return &m_address;
     }
-    void init(int sockfd,const sockaddr_in &addr,char* root,int TRIGmode,int close_log,string user,string passwd,string sqlname);
+    char * get_line(){return m_read_buf+m_start_line;}
 public:
     static int m_epollfd;            //为啥要设为静态的：因为每一个都是一样的，不用重复初始化
     static int m_user_count;

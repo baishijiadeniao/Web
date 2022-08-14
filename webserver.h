@@ -1,3 +1,6 @@
+#ifndef WEBSERVER_H
+#define WEBSERVER_H
+
 #include "./log/log.h"
 #include "lock.h"
 #include "./thread_pool/thread_pool.h"
@@ -33,6 +36,7 @@ private:
     int m_close_log;
     int m_LISTENTrigmode;
     int m_CONNTrigmode;
+    int m_sql_num;
     int m_thread_num;
     int m_OPT_Linger;
     Utils utils;
@@ -40,7 +44,7 @@ private:
 public:
     WebServer(/* args */);
     ~WebServer();
-    void init(int port,string user,string password,string database_name,int log_write,int trigmode,int actor_model,close_log);
+    void init(int port,string user,string password,string database_name,int log_write,int opt_linger,int trigmode,int actor_model,int close_log,int sql_num, int thread_num);
     void trigmode();
     void log_write();
     void sql_pool();
@@ -50,8 +54,10 @@ public:
     void adjust_timer(util_timer* timer);
     void deal_timer(util_timer* timer,int sockfd);
     bool dealclientdata();
-    void dealwithsignal(bool*,bool*);
+    bool dealwithsignal(bool& timeout,bool& stop_server);
     void dealwithread(int sockfd);
     void dealwithwrite(int sockfd);
     void eventloop();
 };
+
+#endif 

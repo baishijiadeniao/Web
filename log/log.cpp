@@ -1,4 +1,4 @@
-#include "log.h"
+#include "./log.h"
 #include<string.h>
 #include<time.h>
 #include<stdarg.h>
@@ -23,6 +23,7 @@ bool loger::init(const char *filename,int close_log,int log_buffer_size,int spli
         m_log_queue=new block_queue<string>(max_queue_size);
         pthread_t p;
         pthread_create(&p,NULL,flush_log_thread,NULL);
+        // pthread_detach(p);
     }
     m_close_log=close_log;
     m_log_buffer_size=log_buffer_size;
@@ -44,7 +45,7 @@ bool loger::init(const char *filename,int close_log,int log_buffer_size,int spli
     }
     m_today=my_tm.tm_mday;
     m_fp=fopen(log_full_name,"a");          //不能用'a'，因为'a'是char，这里的参数要为char*
-    if(m_fp==NULL)
+    if(m_fp==NULL)                          //防止fclose报错
         return false;
     return true;
 }
