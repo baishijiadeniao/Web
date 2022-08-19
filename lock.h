@@ -6,6 +6,7 @@
 #include<exception>
 using namespace::std;
 
+//信号量
 class sem
 {
 private:
@@ -33,6 +34,7 @@ public:
     }
 };
 
+//互斥锁
 class locker
 {
 private:
@@ -57,6 +59,7 @@ public:
     }
 };
 
+//条件变量
 class cond
 {
 private:

@@ -6,7 +6,9 @@ connection_pool* connection_pool::GetInstance(){
     return &connPool;
 }
 
+//构造函数
 connection_pool::connection_pool(){
+    //初始化空闲连接数和已连接数
     m_free_conn=0;
     m_cur_conn=0;
 }
@@ -44,13 +46,15 @@ void connection_pool::init(string url,string username,string passwd,string DBNam
     m_max_conn=m_free_conn;
 }
 
+// 从数据库连接池中返回一个可用连接
 MYSQL* connection_pool::GetConnection(){
     MYSQL* connect=NULL;
     if(connList.size()==0){
         return NULL;
     }
+    //取出连接时，以原子操作方式将信号量减一，当信号量为0时阻塞
     reserce.wait();
-    lock.lock();
+    lock.lock();        //不懂为啥互斥锁和信号量要一起用，加了互斥锁那不就只有一个线程进行了吗 我觉得信号量相当于可以控制进入线程数量的条件变量，是用来减少cpu负荷的
     connect=connList.front();
     connList.pop_front();
     m_free_conn--;
@@ -59,7 +63,9 @@ MYSQL* connection_pool::GetConnection(){
     return connect;
 }
 
+// 释放当前使用的连接
 bool connection_pool::ReleaseConnection(MYSQL* connect){
+
     if(connect==NULL){
         return false;
     }
@@ -72,11 +78,12 @@ bool connection_pool::ReleaseConnection(MYSQL* connect){
     return true;
 }
 
-
+//销毁数据库连接池
 void connection_pool::DestroyPool(){
     lock.lock();
     if(connList.size()>0){
         list<MYSQL*>::iterator it;
+        //逐个遍历，关闭连接
         for(it=connList.begin();it !=connList.end();it++){
             MYSQL* connect=*it;
             mysql_close(connect);
@@ -88,6 +95,7 @@ void connection_pool::DestroyPool(){
     lock.unlock();
 }
 
+//获取空闲连接的数量
 int connection_pool::GetFreeConn(){
     return this->m_free_conn;
 }
@@ -96,12 +104,15 @@ connection_pool::~connection_pool(){
     DestroyPool();
 }
 
-connectionRAII::connectionRAII(MYSQL **con,connection_pool *connPool){       //不懂为啥这里要整一个**
+//不懂为啥这里要整一个**
+//懂了，*con是指向一个mysql连接的指针，GetConnection()返回一个指向mysql连接的指针
+connectionRAII::connectionRAII(MYSQL **con,connection_pool *connPool){
     *con=connPool->GetConnection();
     connRAII=*con;
     poolRAII=connPool;
 }
 
+//析构函数释放连接
 connectionRAII::~connectionRAII(){
     poolRAII->ReleaseConnection(connRAII);
 }

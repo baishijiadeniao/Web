@@ -40,7 +40,7 @@ void WebServer::init(int port,string user,string password,string database_name,i
     //并发模型选择
     this->m_actor_model=actor_model;
     //是否关闭日志
-    this->m_close_log=m_close_log;
+    this->m_close_log=close_log;
     //线程数量
     this->m_thread_num=thread_num;
     //数据库连接池数量
@@ -49,24 +49,29 @@ void WebServer::init(int port,string user,string password,string database_name,i
 }
 
 void WebServer::trigmode(){
+    // LT + LT
     if(0==m_TRIGMode){
         m_LISTENTrigmode=0;
         m_CONNTrigmode=0;
     }
+    // LT + ET
     if(1==m_TRIGMode){
         m_LISTENTrigmode=0;
         m_CONNTrigmode=1;
     }
+    // ET + LT
     if(2==m_TRIGMode){
         m_LISTENTrigmode=1;
         m_CONNTrigmode=0;
     }
+    // ET + ET
     if(3==m_TRIGMode){
         m_LISTENTrigmode=1;
         m_CONNTrigmode=1;
     }
 }
 
+// 初始化日志
 void WebServer::log_write(){
     if(0==m_close_log){
         //异步写入方式
@@ -80,9 +85,10 @@ void WebServer::log_write(){
     }
 }
 
+// 初始化数据库连接池
 void WebServer::sql_pool(){
     m_connection_pool=connection_pool::GetInstance();
-    m_connection_pool->init("localhost",m_user,m_password,m_database_name,5,m_port,m_close_log);  //改小一点便于测试
+    m_connection_pool->init("localhost",m_user,m_password,m_database_name,100,m_port,m_close_log);  //改小一点便于测试
     users->initmysql_result(m_connection_pool);
 }
 
@@ -90,20 +96,25 @@ void WebServer::thread_pool(){
     m_pool=new threadpool<http_conn>(m_actor_model,m_connection_pool,m_thread_num);
 }
 
+//监听事件
 void WebServer::eventListen(){
     m_listenfd=socket(PF_INET,SOCK_STREAM,0);
     assert(m_listenfd>=0);
+    // 非优雅关闭连接：向对端发送一个RST报文直接进入CLOSED状态。
     if(m_OPT_Linger==1){
         struct  linger tmp={1,1};
         setsockopt(m_listenfd,SOL_SOCKET,SO_LINGER,&tmp,sizeof(tmp));
     }
+    // 优雅关闭连接：正常的"TCP四次挥手"。
     if(m_OPT_Linger==0){
         struct  linger tmp={0,1};
         setsockopt(m_listenfd,SOL_SOCKET,SO_LINGER,&tmp,sizeof(tmp));
     }
+    //设置端口复用
     int flag=1;
     setsockopt(m_listenfd,SOL_SOCKET,SO_REUSEPORT,&flag,sizeof(flag));
 
+    // 设置超时时间
     utils.init(TIME_SLOT);
 
     struct sockaddr_in addr;
@@ -322,10 +333,15 @@ void WebServer::eventloop(){
                 if(!flag){
                     continue;
                 }
-            }else if(events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)){
+            }
+            // 处理异常事件
+            else if(events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)){
+                // 服务器端关闭连接
                 util_timer *timer=user_timer[sockfd].timer;
                 deal_timer(timer,sockfd);
-            }else if(sockfd==m_pipe[0] && (events[i].events & EPOLLIN)){
+            }
+            // 处理管道中信号
+            else if(sockfd==m_pipe[0] && (events[i].events & EPOLLIN)){
                 bool flag=dealwithsignal(timeout,stop_server);
                 if(!flag){
                     LOG_ERROR("%s","dealclientdata error");
